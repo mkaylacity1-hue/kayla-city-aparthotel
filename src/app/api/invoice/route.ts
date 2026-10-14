@@ -14,13 +14,15 @@ export async function POST(req: Request) {
 
     const supabase = createClient();
 
-    const { data: reservation, error } = await supabase
-      .from("reservations")
-      .select(`*, guest:guest_id(full_name, email), unit:unit_id(unit_number, unit_type:unit_type_id(name))`)
-      .eq("id", reservationId)
-      .single();
+    const { data: reservationData, error } = await supabase
+  .from("reservations")
+  .select(`*, guest:guest_id(full_name, email), unit:unit_id(unit_number, unit_type:unit_type_id(name))`)
+  .eq("id", reservationId)
+  .single();
 
-    if (error || !reservation) return NextResponse.json({ error: "Reservation not found" }, { status: 404 });
+const reservation = reservationData as any;
+
+    if (error || !reservationData) return NextResponse.json({ error: "Reservation not found" }, { status: 404 });
 
     const guest = reservation.guest as any;
     const unit = reservation.unit as any;
