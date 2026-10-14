@@ -1,7 +1,6 @@
-export const dynamic = "force-dynamic";
 "use client";
 
-import { useState } from "react";
+import { useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -10,7 +9,7 @@ import { Card, CardContent } from "@/components/ui/card";
 
 type Mode = "login" | "reset";
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [mode, setMode] = useState<Mode>("login");
@@ -54,7 +53,6 @@ export default function LoginPage() {
           <p className="mt-1 text-sm text-muted">
             {mode === "login" ? "Sign in to the staff console" : "Reset your password"}
           </p>
-
           {mode === "login" ? (
             <form onSubmit={handleLogin} className="mt-6 flex flex-col gap-4">
               <div>
@@ -94,5 +92,17 @@ export default function LoginPage() {
         </CardContent>
       </Card>
     </main>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={
+      <main className="flex min-h-screen items-center justify-center bg-background px-4">
+        <p className="text-sm text-muted">Loading…</p>
+      </main>
+    }>
+      <LoginForm />
+    </Suspense>
   );
 }
