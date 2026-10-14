@@ -209,7 +209,7 @@ const reservation = reservationData as any;
       return NextResponse.json({ error: emailError.message }, { status: 500 });
     }
 
-    await supabase.from("reservations").update({ invoice_sent: true }).eq("id", reservationId);
+    await (supabase.from("reservations") as any).update({ invoice_sent: true }).eq("id", reservationId);
     return NextResponse.json({ success: true });
 
   } catch (e: any) {
