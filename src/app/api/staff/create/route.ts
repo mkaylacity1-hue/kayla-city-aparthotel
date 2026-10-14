@@ -9,11 +9,13 @@ export async function POST(req: Request) {
     const { data: { user } } = await serverSupabase.auth.getUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const { data: me } = await serverSupabase
-      .from("staff")
-      .select("role, property_id")
-      .eq("id", user.id)
-      .single();
+    const { data: meData, error: meError } = await supabase
+  .from("staff")
+  .select("role")
+  .eq("id", user.id)
+  .single();
+
+const me = meData as any;
 
     if (!me || !canCreateStaff(me.role as any)) {
       return NextResponse.json({ error: "Only owners can create staff" }, { status: 403 });
