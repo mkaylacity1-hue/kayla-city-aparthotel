@@ -158,7 +158,7 @@ export default function BreakfastOrderPage() {
       total_fee_usd: wantsSpecial && idx === 0 ? (specialFee?.fee_usd ?? 5) : 0,
     }));
 
-    const { error: err } = await supabase.from("breakfast_orders").insert(ordersToInsert);
+    const { error: err } = await (supabase.from("breakfast_orders") as any).insert(ordersToInsert);
     setLoading(false);
     if (err) { setError("Failed to submit. Please try again."); return; }
     setStep("done");
