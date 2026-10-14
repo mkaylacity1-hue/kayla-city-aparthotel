@@ -1,58 +1,61 @@
-import { createClient } from "@supabase/supabase-js";
-import { createClient as createServerClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import { canCreateStaff } from "@/lib/auth/roles";
+import { createClient as createAdminClient } from "@supabase/supabase-js";
 
 export async function POST(req: Request) {
   try {
-    const serverSupabase = createServerClient();
-    const { data: { user } } = await serverSupabase.auth.getUser();
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const { data: meData, error: meError } = await supabase
-  .from("staff")
-  .select("role")
-  .eq("id", user.id)
-  .single();
+      .from("staff")
+      .select("role, property_id")
+      .eq("id", user.id)
+      .single();
 
-const me = meData as any;
+    const me = meData as any;
 
-    if (!me || !canCreateStaff(me.role as any)) {
+    if (meError || !me || !canCreateStaff(me.role as any)) {
       return NextResponse.json({ error: "Only owners can create staff" }, { status: 403 });
     }
 
-    const { full_name, email, password, role, property_id } = await req.json();
+    const { full_name, email, password, role } = await req.json();
+
     if (!full_name || !email || !password || !role) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
-    const adminSupabase = createClient(
+    const adminClient = createAdminClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      { auth: { autoRefreshToken: false, persistSession: false } }
     );
 
-    const { data: authData, error: authError } = await adminSupabase.auth.admin.createUser({
+    const { data: newUser, error: createError } = await adminClient.auth.admin.createUser({
       email,
       password,
       email_confirm: true,
     });
 
-    if (authError || !authData.user) {
-      return NextResponse.json({ error: authError?.message || "Failed to create auth user" }, { status: 400 });
+    if (createError) {
+      return NextResponse.json({ error: createError.message }, { status: 400 });
     }
 
-    const { data: staffData, error: staffError } = await adminSupabase
-      .from("staff")
-      .insert({ id: authData.user.id, property_id, full_name, role, is_active: true })
-      .select()
-      .single();
+    const { error: staffError } = await adminClient.from("staff").insert({
+      id: newUser.user.id,
+      property_id: me.property_id,
+      full_name,
+      role,
+      is_active: true,
+    });
 
     if (staffError) {
-      await adminSupabase.auth.admin.deleteUser(authData.user.id);
       return NextResponse.json({ error: staffError.message }, { status: 400 });
     }
 
-    return NextResponse.json({ staff: staffData });
+    return NextResponse.json({ success: true });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
