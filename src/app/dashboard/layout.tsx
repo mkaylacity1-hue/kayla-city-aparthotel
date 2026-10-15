@@ -1,185 +1,138 @@
-"use client";
+import { createClient } from '@/lib/supabase/server';
+import { redirect } from 'next/navigation';
+import Link from 'next/link';
 
-import { useState, useEffect } from "react";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
-import { canAccess, type Module, type Role } from "@/lib/auth/roles";
-import { ThemeToggle } from "@/components/ui/theme-toggle";
-import { SignOutButton } from "@/components/sign-out-button";
-import { NotificationBell } from "@/components/notifications/notification-bell";
-import { VoiceMessageButton } from "@/components/voice/voice-message-button";
-import { Menu, X } from "lucide-react";
+const LOGO_URL = "https://eleahodkxilnzqzjpozq.supabase.co/storage/v1/object/public/public-assets/Kayla%20City%20Logo%20Design.png";
 
-const NAV_ITEMS: { label: string; href: string; module: Module }[] = [
-  { label: "Dashboard", href: "/dashboard", module: "dashboard" },
-  { label: "Staff", href: "/dashboard/staff", module: "staff" },
-  { label: "Units", href: "/dashboard/units", module: "rooms" },
-  { label: "Pricing", href: "/dashboard/pricing", module: "pricing" },
-  { label: "Guests", href: "/dashboard/guests", module: "guests" },
-  { label: "Reservations", href: "/dashboard/reservations", module: "reservations" },
-  { label: "Breakfast Orders", href: "/dashboard/breakfast", module: "dashboard" },
-  { label: "Breakfast Menu", href: "/dashboard/breakfast/manage", module: "dashboard" },
-  { label: "Bar", href: "/dashboard/bar", module: "dashboard" },
-  { label: "Inventory", href: "/dashboard/inventory", module: "dashboard" },
-  { label: "Tasks", href: "/dashboard/tasks", module: "tasks" },
-  { label: "Housekeeping", href: "/dashboard/housekeeping-tasks", module: "housekeeping_tasks" },
-  { label: "Gate Log", href: "/dashboard/gate-log", module: "gate_log" },
-  { label: "Shift Reports", href: "/dashboard/shift-reports", module: "shift_reports" },
-  { label: "Settings", href: "/dashboard/settings", module: "settings" },
-];
-
-function getGreeting(name: string) {
+function getGreeting() {
   const hour = new Date().getHours();
-  if (hour < 12) return `Good morning, ${name} 🌅`;
-  if (hour < 17) return `Good afternoon, ${name} ☀️`;
-  return `Good evening, ${name} 🌙`;
+  if (hour < 12) return "GOOD MORNING";
+  if (hour < 17) return "GOOD AFTERNOON";
+  return "GOOD EVENING";
 }
 
-export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const [staffRow, setStaffRow] = useState<any>(null);
-  const [userId, setUserId] = useState<string>("");
-  const [allStaff, setAllStaff] = useState<any[]>([]);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const pathname = usePathname();
+function getDate() {
+  return new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+}
+
+export default async function DashboardPage() {
   const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect('/login');
 
-  useEffect(() => {
-    async function load() {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { window.location.href = "/login"; return; }
-      setUserId(user.id);
+  const { data: me } = await supabase
+    .from('staff')
+    .select('role, property_id, full_name')
+    .eq('id', user.id)
+    .single();
 
-      const { data: me } = await supabase
-        .from("staff")
-        .select("full_name, role, is_active, property_id")
-        .eq("id", user.id)
-        .single();
+  if (!me) redirect('/login');
 
-      if (!me || !me.is_active) { window.location.href = "/login?error=not_provisioned"; return; }
-      setStaffRow(me);
+  const today = new Date().toISOString().split('T')[0];
+  const firstName = (me.full_name as string)?.split(' ')[0] ?? me.full_name;
 
-      const { data: staff } = await supabase
-        .from("staff")
-        .select("id, full_name, role")
-        .eq("property_id", me.property_id)
-        .eq("is_active", true)
-        .neq("id", user.id);
+  const [
+    { count: occupiedCount },
+    { count: availableCount },
+    { count: cleaningCount },
+    { count: maintenanceCount },
+    { count: totalRooms },
+    { count: guestsIn },
+    { count: openTasks },
+    { count: reportsToday },
+    { count: openMaintenance },
+  ] = await Promise.all([
+    supabase.from('units').select('*', { count: 'exact', head: true }).eq('property_id', me.property_id!).eq('status', 'occupied'),
+    supabase.from('units').select('*', { count: 'exact', head: true }).eq('property_id', me.property_id!).eq('status', 'available'),
+    supabase.from('units').select('*', { count: 'exact', head: true }).eq('property_id', me.property_id!).eq('status', 'cleaning'),
+    supabase.from('units').select('*', { count: 'exact', head: true }).eq('property_id', me.property_id!).eq('status', 'maintenance'),
+    supabase.from('units').select('*', { count: 'exact', head: true }).eq('property_id', me.property_id!),
+    supabase.from('reservations').select('*', { count: 'exact', head: true }).eq('property_id', me.property_id!).eq('status', 'checked_in'),
+    supabase.from('tasks').select('*', { count: 'exact', head: true }).eq('property_id', me.property_id!).in('status', ['pending', 'in_progress']),
+    supabase.from('shift_reports').select('*', { count: 'exact', head: true }).eq('property_id', me.property_id!).eq('report_date', today),
+    supabase.from('units').select('*', { count: 'exact', head: true }).eq('property_id', me.property_id!).eq('status', 'maintenance'),
+  ]);
 
-      setAllStaff(staff ?? []);
-    }
-    load();
-  }, []);
+  const { data: lowStockItems } = await supabase
+    .from('inventory_items')
+    .select('id, current_stock, minimum_stock')
+    .eq('property_id', me.property_id!)
+    .eq('status', 'active');
 
-  if (!staffRow) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
-        <p className="text-sm text-muted">Loading…</p>
-      </div>
-    );
-  }
+  const lowStockCount = (lowStockItems ?? []).filter((i) => i.current_stock <= i.minimum_stock).length;
 
-  const role = staffRow.role as Role;
-  const visibleNavItems = NAV_ITEMS.filter((item) => canAccess(role, item.module));
-  const firstName = staffRow.full_name?.split(" ")[0] ?? staffRow.full_name;
-  const greeting = getGreeting(firstName);
+  const statCards = [
+    { label: "GUESTS IN", value: guestsIn ?? 0, href: "/dashboard/reservations", color: "#e05a5a", icon: "👥" },
+    { label: "PENDING TASKS", value: openTasks ?? 0, href: "/dashboard/tasks", color: "#e09a3a", icon: "✅" },
+    { label: "REPORTS TODAY", value: reportsToday ?? 0, href: "/dashboard/shift-reports", color: "#4a9ae0", icon: "📋" },
+    { label: "OPEN MAINTENANCE", value: openMaintenance ?? 0, href: "/dashboard/housekeeping-tasks", color: "#b8863b", icon: "🔧" },
+    { label: "ACTIVE RESERVATIONS", value: guestsIn ?? 0, href: "/dashboard/reservations", color: "#5a8fe0", icon: "🛏️" },
+    { label: "TOTAL ROOMS", value: totalRooms ?? 0, href: "/dashboard/units", color: "#e0b83a", icon: "🏨" },
+    { label: "LOW STOCK ITEMS", value: lowStockCount, href: "/dashboard/inventory", color: "#e05a8a", icon: "📦" },
+  ];
 
   return (
-    <div className="flex min-h-screen bg-background">
+    <div className="flex flex-col gap-6">
 
-      {/* Sidebar overlay for mobile */}
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 z-40 bg-black/50 sm:hidden"
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
-
-      {/* Sidebar */}
-      <aside className={`
-        fixed top-0 left-0 z-50 h-full w-64 flex-col border-r border-border bg-surface transition-transform duration-300
-        sm:relative sm:flex sm:translate-x-0 sm:w-60
-        ${sidebarOpen ? "flex translate-x-0" : "-translate-x-full sm:translate-x-0"}
-      `}>
-        <div className="border-b border-border px-5 py-5 flex items-center justify-between">
-          <div>
-            <p className="font-heading text-sm font-semibold">M'Kayla City</p>
-            <p className="text-xs text-muted">ApartHotel Console</p>
-          </div>
-          <button
-            type="button"
-            onClick={() => setSidebarOpen(false)}
-            className="sm:hidden text-muted hover:text-foreground"
-          >
-            <X size={18} />
-          </button>
+      {/* Header with logo */}
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-xs font-semibold tracking-widest text-muted uppercase">Owner Dashboard</p>
+          <p className="text-xs text-muted">M'Kayla City ApartHotel</p>
         </div>
-
-        {/* Greeting in sidebar */}
-        <div className="px-5 py-3 border-b border-border">
-          <p className="text-xs text-accent font-medium">{greeting}</p>
-          <p className="text-xs text-muted capitalize mt-0.5">{role.replace("_", " ")}</p>
-        </div>
-
-        <nav className="flex-1 overflow-y-auto px-3 py-4">
-          <ul className="flex flex-col gap-1">
-            {visibleNavItems.map((item) => (
-              <li key={item.href}>
-                <Link
-                  href={item.href}
-                  onClick={() => setSidebarOpen(false)}
-                  className={`block rounded-md px-3 py-2 text-sm transition-colors hover:bg-surface-raised hover:text-accent
-                    ${pathname === item.href ? "bg-surface-raised text-accent font-medium" : "text-foreground"}
-                  `}
-                >
-                  {item.label}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </nav>
-
-        <div className="border-t border-border px-5 py-4">
-          <p className="text-xs font-medium text-foreground">{staffRow.full_name}</p>
-          <p className="text-xs capitalize text-muted">{role.replace("_", " ")}</p>
-        </div>
-      </aside>
-
-      {/* Main content */}
-      <div className="flex flex-1 flex-col min-w-0">
-        <header className="flex items-center justify-between border-b border-border px-4 py-3 sm:px-6">
-          <div className="flex items-center gap-3">
-            {/* Hamburger menu button — mobile only */}
-            <button
-              type="button"
-              onClick={() => setSidebarOpen(true)}
-              className="sm:hidden text-muted hover:text-foreground"
-              aria-label="Open menu"
-            >
-              <Menu size={22} />
-            </button>
-            <p className="font-heading text-sm font-semibold text-foreground hidden sm:block">
-              M'Kayla City ApartHotel
-            </p>
-            {/* Greeting in header — mobile only */}
-            <p className="text-xs text-accent font-medium sm:hidden">{greeting}</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <NotificationBell staffId={userId} />
-            {staffRow.property_id && (
-              <VoiceMessageButton
-                currentStaffId={userId}
-                propertyId={staffRow.property_id}
-                allStaff={allStaff}
-              />
-            )}
-            <ThemeToggle />
-            <SignOutButton />
-          </div>
-        </header>
-
-        <main className="flex-1 px-4 py-4 sm:px-6 sm:py-6">{children}</main>
+        <img src={LOGO_URL} alt="Kayla City" className="h-10 object-contain" />
       </div>
+
+      {/* Greeting */}
+      <div>
+        <p className="text-xs font-bold tracking-widest text-accent uppercase">{getGreeting()}</p>
+        <h1 className="font-heading text-3xl font-bold text-foreground mt-1">Welcome back, {firstName}</h1>
+        <p className="text-sm text-muted mt-1">{getDate()}</p>
+      </div>
+
+      {/* Occupancy bar */}
+      <div className="rounded-xl border border-border bg-surface p-4">
+        <p className="text-xs font-bold tracking-widest text-muted uppercase mb-3">HOTEL OCCUPANCY</p>
+        {/* Visual bar */}
+        <div className="h-1.5 w-full rounded-full bg-surface-raised overflow-hidden mb-3">
+          <div className="h-full rounded-full bg-accent transition-all"
+            style={{ width: `${totalRooms ? Math.round(((occupiedCount ?? 0) / totalRooms) * 100) : 0}%` }} />
+        </div>
+        <div className="flex flex-wrap gap-4 text-xs">
+          <Link href="/dashboard/units?filter=occupied" className="flex items-center gap-1.5 hover:text-accent">
+            <span className="h-2 w-2 rounded-full bg-danger inline-block" />
+            Occupied: <strong>{occupiedCount ?? 0}</strong>
+          </Link>
+          <Link href="/dashboard/units?filter=available" className="flex items-center gap-1.5 hover:text-accent">
+            <span className="h-2 w-2 rounded-full bg-success inline-block" />
+            Available: <strong>{availableCount ?? 0}</strong>
+          </Link>
+          <Link href="/dashboard/units?filter=cleaning" className="flex items-center gap-1.5 hover:text-accent">
+            <span className="h-2 w-2 rounded-full bg-warning inline-block" />
+            Cleaning: <strong>{cleaningCount ?? 0}</strong>
+          </Link>
+          <Link href="/dashboard/units?filter=maintenance" className="flex items-center gap-1.5 hover:text-accent">
+            <span className="h-2 w-2 rounded-full bg-muted inline-block" />
+            Maintenance: <strong>{maintenanceCount ?? 0}</strong>
+          </Link>
+        </div>
+      </div>
+
+      {/* Stat cards */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+        {statCards.map((card) => (
+          <Link key={card.label} href={card.href}
+            className="rounded-xl border border-border bg-surface p-4 flex flex-col gap-3 hover:border-accent transition-colors group"
+            style={{ borderTopColor: card.color, borderTopWidth: "2px" }}>
+            <div className="flex items-start justify-between">
+              <p className="text-xs font-bold tracking-widest text-muted uppercase leading-tight">{card.label}</p>
+              <span className="text-xl rounded-lg p-1.5 bg-surface-raised group-hover:scale-110 transition-transform">{card.icon}</span>
+            </div>
+            <p className="font-heading text-4xl font-bold text-foreground">{card.value}</p>
+          </Link>
+        ))}
+      </div>
+
     </div>
   );
 }
