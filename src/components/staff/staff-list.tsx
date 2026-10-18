@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Plus, Pencil, UserX, UserCheck } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { ROLES, ROLE_LABELS, type Role } from "@/lib/auth/roles";
@@ -40,7 +41,8 @@ export function StaffList({ staff: initial, propertyId }: Props) {
   const [editForm, setEditForm] = useState({ full_name: "", role: "receptionist" as Role });
   const [loading, setLoading] = useState(false);
   const { showToast } = useToast();
-  const supabase = createClient();
+const supabase = createClient();
+const router = useRouter();
 
   const filtered = staff.filter((s) => {
     const matchSearch = s.full_name.toLowerCase().includes(search.toLowerCase());
@@ -66,6 +68,7 @@ if (!res.ok) throw new Error(data.error || "Failed to create staff");
 setShowCreate(false);
 setForm(EMPTY_FORM);
 showToast("Staff member added successfully. They can now log in.");
+router.refresh();
     } catch (e: any) {
       showToast(e.message, "error");
     } finally {
