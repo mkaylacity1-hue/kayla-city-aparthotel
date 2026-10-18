@@ -13,7 +13,7 @@ export default async function BreakfastPage() {
     .eq('id', user.id)
     .single();
 
-  if (!me || !canAccess(me.role as any, 'dashboard')) redirect('/dashboard');
+  if (!me) redirect('/dashboard');
 
   const today = new Date().toISOString().split('T')[0];
   const tomorrow = new Date();

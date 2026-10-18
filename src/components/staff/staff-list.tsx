@@ -62,11 +62,10 @@ export function StaffList({ staff: initial, propertyId }: Props) {
         body: JSON.stringify({ ...form, property_id: propertyId }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to create staff");
-      setStaff((prev) => [data.staff, ...prev]);
-      setShowCreate(false);
-      setForm(EMPTY_FORM);
-      showToast(`${data.staff.full_name} added successfully`);
+if (!res.ok) throw new Error(data.error || "Failed to create staff");
+setShowCreate(false);
+setForm(EMPTY_FORM);
+showToast("Staff member added successfully. They can now log in.");
     } catch (e: any) {
       showToast(e.message, "error");
     } finally {
