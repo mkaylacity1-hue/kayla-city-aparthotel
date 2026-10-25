@@ -231,18 +231,31 @@ const discount = subtotal * parseFloat(checkInForm.discount_percent || "0") / 10
     const { error } = await supabase.from("reservations").update({ status: "checked_out", check_out_time: now }).eq("id", checkOutTarget.id);
     if (error) { showToast(error.message, "error"); setLoading(false); return; }
     await supabase.from("units").update({ status: "cleaning" }).eq("id", checkOutTarget.unit_id);
-    const { data: frontDeskStaff } = await supabase.from("staff").select("id")
-      .eq("property_id", propertyId).in("role", ["owner", "manager", "receptionist"]).eq("is_active", true);
-    if (frontDeskStaff) {
-      await supabase.from("notifications").insert(
-        frontDeskStaff.map((s) => ({
-          recipient_id: s.id,
-          title: "Guest Checked Out",
-          body: `Unit ${checkOutTarget.unit?.unit_number} has been checked out and is now being cleaned.`,
-          link: "/dashboard/units",
-        }))
-      );
-    }
+
+// Auto-create urgent housekeeping task
+await supabase.from("tasks").insert({
+  property_id: propertyId,
+  title: `Clean Unit ${checkOutTarget.unit?.unit_number} — Guest Checked Out`,
+  description: `Unit ${checkOutTarget.unit?.unit_number} needs cleaning after guest checkout. Assign to a housekeeper.`,
+  assigned_by: currentStaffId,
+  is_urgent: true,
+  status: "pending",
+});
+
+// Notify front desk and managers
+const { data: frontDeskStaff } = await supabase.from("staff").select("id")
+  .eq("property_id", propertyId).in("role", ["owner", "manager", "receptionist"]).eq("is_active", true);
+
+if (frontDeskStaff) {
+  await supabase.from("notifications").insert(
+    frontDeskStaff.map((s) => ({
+      recipient_id: s.id,
+      title: "⚠️ Room Needs Cleaning — Urgent",
+      body: `Unit ${checkOutTarget.unit?.unit_number} has been checked out. Please assign a housekeeper immediately.`,
+      link: "/dashboard/housekeeping-tasks",
+    }))
+  );
+}
     setReservations((prev) => prev.map((r) => r.id === checkOutTarget.id ? { ...r, status: "checked_out", check_out_time: now } : r));
     setCheckOutTarget(null);
     setLoading(false);
