@@ -32,6 +32,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
     { label: 'Pricing', href: '/dashboard/pricing', module: 'pricing' },
     { label: 'Guests', href: '/dashboard/guests', module: 'guests' },
     { label: 'Reservations', href: '/dashboard/reservations', module: 'reservations' },
+    { label: 'Reminders', href: '/dashboard/reminders', module: 'reservations' },
     { label: 'Breakfast Orders', href: '/dashboard/breakfast', module: 'dashboard' },
     { label: 'Breakfast Menu', href: '/dashboard/breakfast/manage', module: 'dashboard' },
     { label: 'Bar', href: '/dashboard/bar', module: 'dashboard' },
